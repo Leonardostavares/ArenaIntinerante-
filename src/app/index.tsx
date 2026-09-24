@@ -35,6 +35,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: colors.background,
   },
   header: {
     marginBottom: 48,
@@ -76,8 +77,8 @@ const styles = StyleSheet.create({
   participanteHint: {
     color: colors.primaryText,
     fontSize: 13,
+    fontWeight: '600',
     marginTop: 4,
-    opacity: 0.75,
   },
   staffButton: {
     alignItems: 'center',

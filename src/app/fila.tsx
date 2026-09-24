@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 24,
     paddingTop: 36,
+    backgroundColor: colors.background,
   },
   queuePanel: {
     alignItems: 'center',

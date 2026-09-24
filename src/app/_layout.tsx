@@ -8,7 +8,12 @@ export default function RootLayout() {
   return (
     <ParticipanteProvider>
       <SafeAreaView style={styles.safeArea}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        />
         <StatusBar style="light" />
       </SafeAreaView>
     </ParticipanteProvider>

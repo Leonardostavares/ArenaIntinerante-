@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { Card } from '../components/Card';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { arenas } from '../data/arenas';
+import { colors } from '../styles/colors';
 
 export default function ArenasScreen() {
   function chooseArena(arenaId: string) {
@@ -35,5 +36,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 24,
     paddingTop: 36,
+    backgroundColor: colors.background,
   },
 });
