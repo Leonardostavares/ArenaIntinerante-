@@ -15,7 +15,7 @@
     "react-native-screens": "~4.26.0"
   },
   "scripts": {
-    "start": "expo start --tunnel",
+    "start": "expo start --lan",
     "start:clear": "expo start --clear",
     "start:lan": "expo start --lan",
     "start:tunnel": "expo start --tunnel",
