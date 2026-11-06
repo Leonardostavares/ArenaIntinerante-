@@ -1,24 +1,96 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useParticipante } from '../contexts/ParticipanteContext';
 import { arenas } from '../data/arenas';
+import { salvarDadosParticipante } from '../services/participante';
 import { colors } from '../styles/colors';
+
+const COR_ERRO = '#ff9b9b';
+
+// Erros de validação de salvarDadosParticipante() já vêm em português e podem ser
+// mostrados ao participante; os demais (banco, disco) recebem uma mensagem genérica.
+const ERRO_DE_VALIDACAO = /^(Informe|Idade inválida)/;
+
+function ehErroDeValidacao(erro: unknown): erro is Error {
+  return erro instanceof Error && ERRO_DE_VALIDACAO.test(erro.message);
+}
+
+function mensagemDeErro(erro: unknown): string {
+  if (ehErroDeValidacao(erro)) {
+    return erro.message;
+  }
+  return 'Não foi possível salvar seus dados. Tente novamente.';
+}
 
 export default function CheckinScreen() {
   const { arenaId } = useLocalSearchParams<{ arenaId: string }>();
   const arena = arenas.find((item) => item.id === arenaId);
-  const { checkin } = useParticipante();
+  const {
+    checkin,
+    participanteId,
+    carregandoParticipante,
+    erroParticipante,
+    recarregarParticipanteId,
+  } = useParticipante();
   const [nickname, setNickname] = useState('');
   const [cidade, setCidade] = useState('');
   const [idade, setIdade] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  // Trava imediata contra toques duplos (o estado só atualiza na próxima renderização).
+  const salvandoRef = useRef(false);
 
-  const podeContinuar = nickname.trim() && cidade.trim() && idade.trim() && arena;
+  const camposPreenchidos = Boolean(nickname.trim() && cidade.trim() && idade.trim() && arena);
+  const identificacaoPronta = Boolean(participanteId) && !carregandoParticipante;
+  const podeContinuar = camposPreenchidos && identificacaoPronta && !salvando;
 
-  function finishCheckin() {
-    if (!podeContinuar || !arena) return;
-    checkin(arena.id, { nickname: nickname.trim(), cidade: cidade.trim(), idade: idade.trim() });
+  function alterarCampo(setter: (valor: string) => void) {
+    return (valor: string) => {
+      setter(valor);
+      if (erroSalvar) setErroSalvar(null);
+    };
+  }
+
+  async function finishCheckin() {
+    if (!podeContinuar || !arena || salvandoRef.current) return;
+
+    salvandoRef.current = true;
+    setSalvando(true);
+    setErroSalvar(null);
+
+    const dados = { nickname: nickname.trim(), cidade: cidade.trim(), idade: idade.trim() };
+
+    try {
+      // Grava no SQLite só depois do toque em "Continuar" (ação do participante).
+      await salvarDadosParticipante({
+        apelido: dados.nickname,
+        cidade: dados.cidade,
+        idade: dados.idade,
+      });
+    } catch (erro) {
+      // Erros de validação são esperados e já aparecem na tela;
+      // só falhas técnicas (banco, disco etc.) vão para o console.
+      if (!ehErroDeValidacao(erro)) {
+        console.error('[checkin] Falha ao salvar dados do participante:', erro);
+      }
+      setErroSalvar(mensagemDeErro(erro));
+      return; // Não avança se o salvamento falhar.
+    } finally {
+      salvandoRef.current = false;
+      setSalvando(false);
+    }
+
+    checkin(arena.id, dados);
     router.push('/estacoes');
   }
 
@@ -36,7 +108,8 @@ export default function CheckinScreen() {
       <Text style={styles.label}>Seu apelido</Text>
       <TextInput
         value={nickname}
-        onChangeText={setNickname}
+        onChangeText={alterarCampo(setNickname)}
+        editable={!salvando}
         placeholder="Ex.: Davi"
         placeholderTextColor={colors.placeholder}
         style={styles.input}
@@ -46,7 +119,8 @@ export default function CheckinScreen() {
       <Text style={styles.label}>Sua cidade</Text>
       <TextInput
         value={cidade}
-        onChangeText={setCidade}
+        onChangeText={alterarCampo(setCidade)}
+        editable={!salvando}
         placeholder="Ex.: Sao Luis"
         placeholderTextColor={colors.placeholder}
         style={styles.input}
@@ -56,7 +130,8 @@ export default function CheckinScreen() {
       <Text style={styles.label}>Sua idade</Text>
       <TextInput
         value={idade}
-        onChangeText={setIdade}
+        onChangeText={alterarCampo(setIdade)}
+        editable={!salvando}
         placeholder="Ex.: 17"
         placeholderTextColor={colors.placeholder}
         style={styles.input}
@@ -64,16 +139,46 @@ export default function CheckinScreen() {
         maxLength={3}
       />
 
+      {erroParticipante ? (
+        <View style={styles.errorBox} accessibilityRole="alert">
+          <Text style={styles.errorText}>
+            Não foi possível preparar sua identificação neste aparelho.
+          </Text>
+          <Pressable
+            onPress={recarregarParticipanteId}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.retryButtonText}>Tentar novamente</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {erroSalvar ? (
+        <View style={styles.errorBox} accessibilityRole="alert">
+          <Text style={styles.errorText}>{erroSalvar}</Text>
+        </View>
+      ) : null}
+
       <Pressable
         onPress={finishCheckin}
         disabled={!podeContinuar}
+        accessibilityState={{ disabled: !podeContinuar, busy: salvando }}
         style={({ pressed }) => [
           styles.primaryButton,
           !podeContinuar && styles.disabled,
           pressed && podeContinuar && styles.pressed,
         ]}
       >
-        <Text style={styles.primaryButtonText}>Continuar</Text>
+        {salvando ? (
+          <View style={styles.buttonContent}>
+            <ActivityIndicator color={colors.primaryText} />
+            <Text style={styles.primaryButtonText}>Salvando...</Text>
+          </View>
+        ) : (
+          <Text style={styles.primaryButtonText}>
+            {carregandoParticipante ? 'Preparando...' : 'Continuar'}
+          </Text>
+        )}
       </Pressable>
     </ScrollView>
   );
@@ -117,6 +222,33 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: colors.primaryText,
     fontSize: 16,
+    fontWeight: '800',
+  },
+  buttonContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  errorBox: {
+    borderColor: COR_ERRO,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 14,
+  },
+  errorText: {
+    color: COR_ERRO,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  retryButtonText: {
+    color: colors.primary,
+    fontSize: 14,
     fontWeight: '800',
   },
   disabled: {
