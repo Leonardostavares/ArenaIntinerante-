@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { ErroCheckin, registrarCheckin } from '../services/checkins';
 import { obterOuCriarParticipanteId } from '../services/participante';
 
 type CheckinData = {
@@ -29,8 +30,11 @@ type ParticipanteContextValue = {
   arenaId: string | null;
   station: string | null;
   queueNumber: string | null;
+  /** Id (no SQLite) do check-in da atividade atual; null fora da fila. */
+  checkinAtualId: string | null;
   checkin: (arenaId: string, dados: CheckinData) => void;
-  joinQueue: (station: string) => void;
+  /** Registra o check-in no SQLite e, só depois, atualiza a fila. Rejeita se falhar. */
+  joinQueue: (station: string) => Promise<void>;
   resetParticipante: () => void;
 };
 
@@ -49,6 +53,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
   const [arenaId, setArenaId] = useState<string | null>(null);
   const [station, setStation] = useState<string | null>(null);
   const [queueNumber, setQueueNumber] = useState<string | null>(null);
+  const [checkinAtualId, setCheckinAtualId] = useState<string | null>(null);
 
   // Carrega o UUID uma vez quando o app abre (e de novo só se pedirem nova tentativa).
   // Só lê/cria o identificador: nenhum dado pessoal é gravado aqui.
@@ -89,13 +94,25 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
     setIdade(dados.idade);
   }, []);
 
-  const joinQueue = useCallback((stationName: string) => {
-    setStation(stationName);
-    setQueueNumber(`A-${Math.floor(Math.random() * 80) + 20}`);
-  }, []);
+  // Grava o check-in (status 'na_fila') antes de mudar o estado da tela.
+  // Se já existir check-in nessa arena + estação, reaproveita o mesmo registro.
+  // Nunca conclui a atividade: isso só acontece por ação explícita do participante.
+  const joinQueue = useCallback(
+    async (stationName: string) => {
+      if (!arenaId) {
+        throw new ErroCheckin('validacao', 'Escolha uma arena antes de entrar na fila.');
+      }
+      const { checkin: registro } = await registrarCheckin(arenaId, stationName);
+      setCheckinAtualId(registro.id);
+      setStation(stationName);
+      setQueueNumber(`A-${Math.floor(Math.random() * 80) + 20}`);
+    },
+    [arenaId]
+  );
 
   // Limpa só os dados da sessão. O participanteId NÃO é apagado:
   // ele identifica o aparelho e precisa continuar o mesmo.
+  // Os check-ins gravados no SQLite também permanecem.
   const resetParticipante = useCallback(() => {
     setNickname('');
     setCidade('');
@@ -103,6 +120,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
     setArenaId(null);
     setStation(null);
     setQueueNumber(null);
+    setCheckinAtualId(null);
   }, []);
 
   const value = useMemo<ParticipanteContextValue>(
@@ -117,6 +135,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       arenaId,
       station,
       queueNumber,
+      checkinAtualId,
       checkin,
       joinQueue,
       resetParticipante,
@@ -132,6 +151,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       arenaId,
       station,
       queueNumber,
+      checkinAtualId,
       checkin,
       joinQueue,
       resetParticipante,
