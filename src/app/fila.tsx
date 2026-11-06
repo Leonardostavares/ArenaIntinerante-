@@ -1,8 +1,9 @@
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useParticipante } from '../contexts/ParticipanteContext';
 import { concluirCheckin, ErroCheckin, obterCheckin } from '../services/checkins';
+import { obterFeedbackDoCheckin } from '../services/feedback';
 import { colors } from '../styles/colors';
 
 const COR_ERRO = '#ff9b9b';
@@ -22,6 +23,39 @@ export default function FilaScreen() {
   const [erro, setErro] = useState<string | null>(null);
   // Trava imediata contra toques repetidos.
   const concluindoRef = useRef(false);
+  // A atividade já tem avaliação? (null enquanto não se sabe)
+  const [temAvaliacao, setTemAvaliacao] = useState<boolean | null>(null);
+  // Evita abrir a tela de avaliação duas vezes com toques rápidos.
+  const navegandoRef = useRef(false);
+
+  // Sempre que a tela volta a ficar visível (ex.: ao retornar da avaliação),
+  // libera a navegação e relê se já existe avaliação para esta atividade.
+  useFocusEffect(
+    useCallback(() => {
+      navegandoRef.current = false;
+      if (!checkinAtualId || !concluida) return;
+      let ativo = true;
+      obterFeedbackDoCheckin(checkinAtualId)
+        .then((feedback) => {
+          if (ativo) setTemAvaliacao(Boolean(feedback));
+        })
+        .catch((falha: unknown) => {
+          // Sem a informação, o botão continua funcionando como "Avaliar atividade".
+          console.error('[fila] Falha ao consultar a avaliação:', falha);
+          if (ativo) setTemAvaliacao(false);
+        });
+      return () => {
+        ativo = false;
+      };
+    }, [checkinAtualId, concluida])
+  );
+
+  function abrirAvaliacao() {
+    // Só abre para atividade concluída e uma vez por toque.
+    if (!checkinAtualId || !concluida || navegandoRef.current) return;
+    navegandoRef.current = true;
+    router.push('/feedback');
+  }
 
   // Só LÊ o status salvo; nunca conclui nada automaticamente.
   useEffect(() => {
@@ -82,10 +116,20 @@ export default function FilaScreen() {
         </View>
 
         {concluida ? (
-          <View style={styles.successBox} accessibilityRole="summary">
-            <Text style={styles.successTitle}>✓ Atividade concluída!</Text>
-            <Text style={styles.successText}>Obrigado por participar de {station}.</Text>
-          </View>
+          <>
+            <View style={styles.successBox} accessibilityRole="summary">
+              <Text style={styles.successTitle}>✓ Atividade concluída!</Text>
+              <Text style={styles.successText}>Obrigado por participar de {station}.</Text>
+            </View>
+            <Pressable
+              onPress={abrirAvaliacao}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryButtonText}>
+                {temAvaliacao ? 'Ver/editar avaliação' : 'Avaliar atividade'}
+              </Text>
+            </Pressable>
+          </>
         ) : (
           <>
             {erro ? (
