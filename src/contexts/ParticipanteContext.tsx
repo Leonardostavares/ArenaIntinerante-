@@ -36,6 +36,14 @@ type ParticipanteContextValue = {
   /** Registra o check-in no SQLite e, só depois, atualiza a fila. Rejeita se falhar. */
   joinQueue: (station: string) => Promise<void>;
   resetParticipante: () => void;
+
+  // Acesso da equipe ao painel. Fica SÓ em memória: some ao fechar o app.
+  /** true quando a equipe foi autorizada a ver o painel nesta sessão. */
+  acessoEquipe: boolean;
+  /** Libera o painel. Deve ser chamada apenas após uma autenticação válida da equipe. */
+  liberarAcessoEquipe: () => void;
+  /** Bloqueia o painel novamente. */
+  encerrarAcessoEquipe: () => void;
 };
 
 const ParticipanteContext = createContext<ParticipanteContextValue | null>(null);
@@ -54,6 +62,8 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
   const [station, setStation] = useState<string | null>(null);
   const [queueNumber, setQueueNumber] = useState<string | null>(null);
   const [checkinAtualId, setCheckinAtualId] = useState<string | null>(null);
+  // Nunca é salvo no aparelho e não é alterado por resetParticipante().
+  const [acessoEquipe, setAcessoEquipe] = useState(false);
 
   // Carrega o UUID uma vez quando o app abre (e de novo só se pedirem nova tentativa).
   // Só lê/cria o identificador: nenhum dado pessoal é gravado aqui.
@@ -123,6 +133,14 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
     setCheckinAtualId(null);
   }, []);
 
+  const liberarAcessoEquipe = useCallback(() => {
+    setAcessoEquipe(true);
+  }, []);
+
+  const encerrarAcessoEquipe = useCallback(() => {
+    setAcessoEquipe(false);
+  }, []);
+
   const value = useMemo<ParticipanteContextValue>(
     () => ({
       participanteId,
@@ -139,6 +157,9 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       checkin,
       joinQueue,
       resetParticipante,
+      acessoEquipe,
+      liberarAcessoEquipe,
+      encerrarAcessoEquipe,
     }),
     [
       participanteId,
@@ -155,6 +176,9 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       checkin,
       joinQueue,
       resetParticipante,
+      acessoEquipe,
+      liberarAcessoEquipe,
+      encerrarAcessoEquipe,
     ]
   );
 
