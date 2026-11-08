@@ -46,6 +46,9 @@ Como a produção recebeu as mesmas migrações `0001` e `0002`, esta auditoria 
 | F | Herança de papéis de `anon`/`authenticated` | Nenhuma associação direta encontrada |
 | Análise das políticas | Definições das políticas RLS × modelo esperado | **10/10 compatíveis** |
 | Esquema das tabelas | Colunas existentes × `0001_esquema.sql` (nome e tipo) | **23/23 colunas corretas**; nenhuma adicional, ausente ou com tipo diferente |
+| Funções do esquema `privado` | Permissões e configuração das funções | **4 funções** analisadas: nenhuma com EXECUTE para `anon`, `authenticated` ou `PUBLIC`; todas pertencem a `postgres`; todas `SECURITY INVOKER` com `search_path` vazio |
+| Gatilhos de proteção | Instalação e estado | **3 gatilhos** instalados e habilitados |
+| Uso de `eh_equipe()` | Políticas RLS, dependências no catálogo e repositório | Nenhuma referência nas políticas RLS; nenhuma dependência registrada no catálogo; nenhuma utilização pelo aplicativo atual |
 
 **Classificação:**
 
@@ -76,7 +79,7 @@ Observação: a `0003` do repositório contém uma trava que aceita apenas o ban
 |---|---|---|
 | 1 | ~~Esclarecer a contagem da consulta C~~ — **ENCERRADA** | A consulta C retornou **40** registros (não 41), todos corretos: SELECT nas 23 colunas + 17 permissões de INSERT/UPDATE por coluna. A verificação do esquema confirmou **23/23 colunas** iguais à `0001` (nome e tipo), sem colunas adicionais ou ausentes |
 | 2 | Testes **funcionais** de segurança na produção | A auditoria não comprova o comportamento pela API. Testes que gravam dados não devem rodar na produção; uma alternativa segura seria apenas a verificação de leitura negada para quem não tem login (T1), com autorização e adaptação explícita do script, que hoje bloqueia a produção |
-| 3 | Permissões das funções do esquema `privado` | `eh_equipe()` e as funções dos triggers não foram auditadas na produção (esperado: sem EXECUTE para `PUBLIC`, `anon` e `authenticated`) |
+| 3 | ~~Permissões das funções do esquema `privado`~~ — **ENCERRADA** (permissões e configuração analisadas) | Verificado na produção: 4 funções sem EXECUTE para `anon`, `authenticated` ou `PUBLIC`, todas de `postgres`, `SECURITY INVOKER` e `search_path` vazio; 3 gatilhos de proteção instalados e habilitados; `eh_equipe()` sem referência nas políticas RLS, sem dependência registrada no catálogo e sem uso pelo aplicativo atual. **Ressalva:** alterações futuras nas políticas RLS ou a implementação de `resumo_painel()` (etapa S3) exigirão **nova validação funcional** |
 | 4 | Permissões padrão para objetos futuros (`pg_default_acl`) | Tabelas novas podem receber acesso automático de `anon`/`authenticated`; toda migração futura precisa de `enable row level security` e `revoke` |
 | 5 | Configurações de autenticação | Login anônimo, CAPTCHA e limite de logins anônimos por IP (importante para o evento) |
 | 6 | Reauditoria periódica | Repetir as consultas A–F após cada nova migração ou mudança no painel |
@@ -84,6 +87,7 @@ Observação: a `0003` do repositório contém uma trava que aceita apenas o ban
 ## 6. Recomendações
 
 1. Não executar a `0003` na produção enquanto as verificações continuarem sem divergência.
-2. Tratar as pendências 2 a 6 antes de considerar a segurança da produção totalmente verificada (a pendência 1 foi encerrada).
+2. Tratar as pendências 2, 4, 5 e 6 antes de considerar a segurança da produção totalmente verificada (as pendências 1 e 3 foram encerradas).
 3. Incluir a conferência de permissões de `authenticated` no T19 dos testes SQL, para detectar excessos automaticamente no projeto de teste.
 4. Manter a separação entre projeto de teste e produção: testes que gravam dados somente no projeto de teste.
+5. Ao alterar políticas RLS ou implementar `resumo_painel()`, repetir a validação funcional (testes RLS no projeto de teste) e reauditar as funções do esquema `privado`.
