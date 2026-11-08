@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteBindValue } from 'expo-sqlite';
+import { usarSupabase } from '../lib/ambiente';
 import { obterBanco, StatusCheckin } from './db';
+import { ErroCheckin } from './erros';
 import { obterOuCriarParticipanteId } from './participante';
 
 /**
@@ -42,23 +44,9 @@ export type TotalPorAtividade = {
   concluidos: number;
 };
 
-export type CodigoErroCheckin = 'validacao' | 'nao_encontrado' | 'banco';
-
-/**
- * Erro dos serviços de check-in. O `codigo` permite que as telas diferenciem
- * erros esperados (validação, não encontrado) de falhas técnicas (banco).
- */
-export class ErroCheckin extends Error {
-  readonly codigo: CodigoErroCheckin;
-  readonly causa?: unknown;
-
-  constructor(codigo: CodigoErroCheckin, mensagem: string, causa?: unknown) {
-    super(mensagem);
-    this.name = 'ErroCheckin';
-    this.codigo = codigo;
-    this.causa = causa;
-  }
-}
+// Classe de erro compartilhada (src/services/erros.ts), reexportada para que
+// os imports existentes (telas e contexto) continuem funcionando.
+export { ErroCheckin, type CodigoErroCheckin } from './erros';
 
 type LinhaCheckin = {
   id: string;
@@ -127,11 +115,19 @@ function montarFiltro(filtro: FiltroCheckins = {}): { where: string; params: SQL
 }
 
 /**
+ * Implementação remota (Supabase), carregada por import dinâmico SOMENTE no
+ * modo supabase. No modo local, nada do Supabase é carregado e as funções
+ * abaixo seguem o código SQLite original, sem alteração.
+ */
+const remoto = () => import('./checkinsSupabase');
+
+/**
  * Registra o check-in do participante deste aparelho em uma arena + estação.
  * Se já existir check-in nessa mesma atividade, devolve o existente (sem duplicar
  * e sem alterar o status).
  */
 export async function registrarCheckin(arenaId: string, estacao: string): Promise<ResultadoRegistro> {
+  if (usarSupabase()) return (await remoto()).registrarCheckin(arenaId, estacao);
   const arena = textoObrigatorio(arenaId, 'a arena');
   const nomeEstacao = textoObrigatorio(estacao, 'a estação');
   const participanteId = await obterOuCriarParticipanteId();
@@ -165,6 +161,7 @@ export async function registrarCheckin(arenaId: string, estacao: string): Promis
  * Chamar de novo em um check-in já concluído não altera nada.
  */
 export async function concluirCheckin(checkinId: string): Promise<Checkin> {
+  if (usarSupabase()) return (await remoto()).concluirCheckin(checkinId);
   const id = textoObrigatorio(checkinId, 'o check-in');
   const participanteId = await obterOuCriarParticipanteId();
 
@@ -191,6 +188,7 @@ export async function concluirCheckin(checkinId: string): Promise<Checkin> {
 
 /** Busca um check-in pelo id (de qualquer participante deste aparelho). */
 export async function obterCheckin(checkinId: string): Promise<Checkin | null> {
+  if (usarSupabase()) return (await remoto()).obterCheckin(checkinId);
   const id = textoObrigatorio(checkinId, 'o check-in');
   return noBanco('consultar o check-in', async () => {
     const db = await obterBanco();
@@ -204,6 +202,7 @@ export async function obterCheckin(checkinId: string): Promise<Checkin | null> {
 
 /** Check-ins do participante deste aparelho, do mais recente ao mais antigo. */
 export async function listarMeusCheckins(): Promise<Checkin[]> {
+  if (usarSupabase()) return (await remoto()).listarMeusCheckins();
   const participanteId = await obterOuCriarParticipanteId();
   return noBanco('listar seus check-ins', async () => {
     const db = await obterBanco();
@@ -217,6 +216,7 @@ export async function listarMeusCheckins(): Promise<Checkin[]> {
 
 /** Check-ins concluídos do participante que ainda não receberam feedback. */
 export async function listarPendentesDeFeedback(): Promise<Checkin[]> {
+  if (usarSupabase()) return (await remoto()).listarPendentesDeFeedback();
   const participanteId = await obterOuCriarParticipanteId();
   return noBanco('listar atividades para avaliar', async () => {
     const db = await obterBanco();
@@ -234,6 +234,8 @@ export async function listarPendentesDeFeedback(): Promise<Checkin[]> {
 
 /** Lista check-ins registrados neste aparelho, com filtros opcionais. */
 export async function listarCheckins(filtro?: FiltroCheckins): Promise<Checkin[]> {
+  // Modo supabase: indicador geral bloqueado até a S3 (evita dados parciais).
+  if (usarSupabase()) return (await remoto()).listarCheckins(filtro);
   const { where, params } = montarFiltro(filtro);
   return noBanco('listar os check-ins', async () => {
     const db = await obterBanco();
@@ -252,6 +254,8 @@ export async function listarCheckins(filtro?: FiltroCheckins): Promise<Checkin[]
 export async function contarParticipantesUnicos(
   filtro?: Pick<FiltroCheckins, 'arenaId' | 'estacao'>
 ): Promise<number> {
+  // Modo supabase: indicador geral bloqueado até a S3 (evita dados parciais).
+  if (usarSupabase()) return (await remoto()).contarParticipantesUnicos(filtro);
   const { where, params } = montarFiltro(filtro);
   return noBanco('contar os participantes', async () => {
     const db = await obterBanco();
@@ -265,6 +269,8 @@ export async function contarParticipantesUnicos(
 
 /** Totais por arena + estação: check-ins, participantes únicos e concluídos. */
 export async function totaisPorAtividade(): Promise<TotalPorAtividade[]> {
+  // Modo supabase: indicador geral bloqueado até a S3 (evita dados parciais).
+  if (usarSupabase()) return (await remoto()).totaisPorAtividade();
   return noBanco('calcular os totais por atividade', async () => {
     const db = await obterBanco();
     const linhas = await db.getAllAsync<{

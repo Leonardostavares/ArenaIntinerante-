@@ -1079,6 +1079,239 @@ caso('T18 RETURNING devolve só linhas próprias', async () => {
 
 test('T19 conferência estrutural', { skip: 'somente no SQL: supabase/tests/rls.sql.test.sql' }, () => {});
 
+// Mesmo fluxo de src/services/identidadeSupabase.ts (salvarCadastroSupabase):
+// SELECT da própria linha -> INSERT (com id = auth.uid()) -> UPDATE; sem upsert.
+caso('T20 cadastro pelo fluxo do app (select, insert, update)', async () => {
+  const c = await criarAnonimo('C'); // usuário exclusivo, ainda sem cadastro
+
+  esperarZeroLinhas(
+    await requisitar('/rest/v1/participantes', {
+      token: c.token,
+      consulta: { select: 'id', id: `eq.${c.id}` },
+    }),
+    'T20 select inicial'
+  );
+
+  const insercao = await requisitar('/rest/v1/participantes', {
+    metodo: 'POST',
+    token: c.token,
+    corpo: { id: c.id, apelido: 'Teste C', cidade: 'Teste', idade: 20 },
+    prefer: 'return=representation',
+  });
+  assert.equal(insercao.status, 201, `T20 insert: ${resumo(insercao)}`);
+  assert.equal(insercao.dados?.[0]?.id, c.id, 'T20 insert: id = auth.uid()');
+  assert.equal(insercao.dados[0].atualizado_em, null, 'T20 insert: atualizado_em vazio');
+
+  // Corrida simulada: segundo INSERT colide (o app então faz UPDATE).
+  const repetida = await requisitar('/rest/v1/participantes', {
+    metodo: 'POST',
+    token: c.token,
+    corpo: { id: c.id, apelido: 'Teste C', cidade: 'Teste', idade: 20 },
+    prefer: 'return=representation',
+  });
+  assert.equal(repetida.status, 409, 'T20 insert repetido: HTTP');
+  assert.equal(repetida.dados?.code, '23505', 'T20 insert repetido: código');
+
+  const atualizacao = await requisitar('/rest/v1/participantes', {
+    metodo: 'PATCH',
+    token: c.token,
+    consulta: { id: `eq.${c.id}` },
+    corpo: { apelido: 'C atualizado', cidade: 'Outra', idade: 21 },
+    prefer: 'return=representation',
+  });
+  assert.equal(atualizacao.status, 200, `T20 update: ${resumo(atualizacao)}`);
+  assert.equal(atualizacao.dados?.length, 1, 'T20 update: 1 linha');
+  assert.equal(atualizacao.dados[0].apelido, 'C atualizado', 'T20 update: apelido');
+  assert.equal(atualizacao.dados[0].idade, 21, 'T20 update: idade');
+  assert.ok(atualizacao.dados[0].atualizado_em, 'T20 update: atualizado_em preenchido (trigger)');
+
+  const [final] = await lerPorId(c, 'participantes', c.id);
+  assert.equal(final.id, c.id, 'T20: id inalterado');
+  assert.equal(final.criado_em, insercao.dados[0].criado_em, 'T20: criado_em inalterado');
+});
+
+// Mesmo fluxo de src/services/checkinsSupabase.ts (registrarCheckin):
+// cadastro existe -> INSERT (arena_id, estacao) -> em 23505, SELECT do existente.
+caso('T21 check-in pelo fluxo do app (insert e duplicata)', async () => {
+  const d = await criarAnonimo('D');
+  const cadastro = await requisitar('/rest/v1/participantes', {
+    metodo: 'POST',
+    token: d.token,
+    corpo: { id: d.id, apelido: 'Teste D', cidade: 'Teste', idade: 20 },
+    prefer: 'return=representation',
+  });
+  assert.equal(cadastro.status, 201, `preparação: cadastro de D (${resumo(cadastro)})`);
+
+  // Verificação de cadastro feita pelo app antes do INSERT.
+  const existe = await requisitar('/rest/v1/participantes', {
+    token: d.token,
+    consulta: { select: 'id', id: `eq.${d.id}` },
+  });
+  assert.equal(existe.dados?.length, 1, 'T21 cadastro existe');
+
+  const nomeEstacao = estacao('T21');
+  const primeiro = await requisitar('/rest/v1/checkins', {
+    metodo: 'POST',
+    token: d.token,
+    corpo: { arena_id: ARENA, estacao: nomeEstacao },
+    prefer: 'return=representation',
+  });
+  assert.equal(primeiro.status, 201, `T21 insert: ${resumo(primeiro)}`);
+  const criado = primeiro.dados?.[0];
+  assert.equal(criado?.participante_id, d.id, 'T21 insert: dono = auth.uid()');
+  assert.equal(criado?.status, 'na_fila', 'T21 insert: status pelo trigger');
+
+  const repetido = await requisitar('/rest/v1/checkins', {
+    metodo: 'POST',
+    token: d.token,
+    corpo: { arena_id: ARENA, estacao: nomeEstacao },
+    prefer: 'return=representation',
+  });
+  assert.equal(repetido.status, 409, 'T21 insert repetido: HTTP');
+  assert.equal(repetido.dados?.code, '23505', 'T21 insert repetido: código');
+
+  // Fallback do app: busca o existente por participante + arena + estação.
+  const existente = await requisitar('/rest/v1/checkins', {
+    token: d.token,
+    consulta: {
+      select: '*',
+      participante_id: `eq.${d.id}`,
+      arena_id: `eq.${ARENA}`,
+      estacao: `eq.${nomeEstacao}`,
+    },
+  });
+  assert.equal(existente.status, 200, 'T21 busca do existente: HTTP');
+  assert.equal(existente.dados?.length, 1, 'T21: continua 1 check-in (sem duplicata)');
+  assert.equal(existente.dados[0].id, criado.id, 'T21: é o mesmo check-in');
+});
+
+// Mesmo fluxo de checkinsSupabase.ts (concluirCheckin):
+// PATCH status (próprio) -> 1 linha; repetido -> 0 linhas e leitura devolve o concluído;
+// de outra pessoa -> 0 linhas e leitura não encontra.
+caso('T22 conclusão pelo fluxo do app (repetida e alheia)', async () => {
+  const a = await usuarioA();
+  const b = await usuarioB();
+  const proprio = await criarCheckin(a, 'T22');
+  const alheio = await criarCheckin(b, 'T22-B');
+
+  const concluir = (usuario, id) =>
+    requisitar('/rest/v1/checkins', {
+      metodo: 'PATCH',
+      token: usuario.token,
+      consulta: { id: `eq.${id}`, participante_id: `eq.${usuario.id}` },
+      corpo: { status: 'concluido' },
+      prefer: 'return=representation',
+    });
+
+  const primeira = await concluir(a, proprio.id);
+  assert.equal(primeira.status, 200, 'T22 conclusão: HTTP');
+  assert.equal(primeira.dados?.length, 1, 'T22 conclusão: 1 linha');
+  assert.ok(primeira.dados[0].concluido_em, 'T22 conclusão: concluido_em pelo trigger');
+
+  esperarZeroLinhas(await concluir(a, proprio.id), 'T22 conclusão repetida');
+  const [releitura] = await lerPorId(a, 'checkins', proprio.id);
+  assert.equal(releitura.status, 'concluido', 'T22 repetida: leitura devolve o concluído');
+  assert.equal(releitura.concluido_em, primeira.dados[0].concluido_em, 'T22 repetida: concluido_em inalterado');
+
+  // A tenta concluir o check-in de B (filtrando por si mesmo, como o app faz).
+  esperarZeroLinhas(await concluir(a, alheio.id), 'T22 conclusão alheia');
+  esperarZeroLinhas(
+    await requisitar('/rest/v1/checkins', { token: a.token, consulta: { select: 'id', id: `eq.${alheio.id}` } }),
+    'T22 alheio invisível para A'
+  );
+  const [deB] = await lerPorId(b, 'checkins', alheio.id);
+  assert.equal(deB.status, 'na_fila', 'T22: B confirma que o dele continua na fila');
+});
+
+// Proteção do app (checkinsSupabase.ts): sem cadastro, não há check-in.
+// O app checa o cadastro antes; o banco também barra pela chave estrangeira.
+caso('T23 check-in sem cadastro é recusado', async () => {
+  const f = await criarAnonimo('F'); // sessão válida, mas SEM cadastro
+
+  esperarZeroLinhas(
+    await requisitar('/rest/v1/participantes', { token: f.token, consulta: { select: 'id', id: `eq.${f.id}` } }),
+    'T23 verificação de cadastro do app'
+  );
+
+  const tentativa = await requisitar('/rest/v1/checkins', {
+    metodo: 'POST',
+    token: f.token,
+    corpo: { arena_id: ARENA, estacao: estacao('T23') },
+    prefer: 'return=representation',
+  });
+  assert.equal(tentativa.status, 409, `T23 insert sem cadastro: ${resumo(tentativa)}`);
+  assert.equal(tentativa.dados?.code, '23503', 'T23 insert sem cadastro: chave estrangeira');
+
+  esperarZeroLinhas(
+    await requisitar('/rest/v1/checkins', { token: f.token, consulta: { select: 'id' } }),
+    'T23 nenhum check-in criado'
+  );
+});
+
+// Mesmo fluxo de src/services/feedbackSupabase.ts (salvarFeedback):
+// check-in próprio e concluído -> SELECT da avaliação -> INSERT (checkin_id, nota,
+// comentario) -> em 23505, UPDATE (nota, comentario). Sem upsert.
+caso('T24 avaliação pelo fluxo do app (select, insert, conflito, update)', async () => {
+  const a = await usuarioA();
+  const c = await criarCheckin(a, 'T24', { concluir: true });
+
+  // Verificação prévia do app: o check-in é do participante e está concluído.
+  const [checkin] = await lerPorId(a, 'checkins', c.id);
+  assert.equal(checkin?.status, 'concluido', 'T24 check-in concluído');
+
+  const lerAvaliacao = () =>
+    requisitar('/rest/v1/feedbacks', {
+      token: a.token,
+      consulta: { select: '*', checkin_id: `eq.${c.id}`, participante_id: `eq.${a.id}` },
+    });
+
+  esperarZeroLinhas(await lerAvaliacao(), 'T24 select inicial');
+
+  const insercao = await requisitar('/rest/v1/feedbacks', {
+    metodo: 'POST',
+    token: a.token,
+    corpo: { checkin_id: c.id, nota: 4, comentario: 'Bom' },
+    prefer: 'return=representation',
+  });
+  assert.equal(insercao.status, 201, `T24 insert: ${resumo(insercao)}`);
+  const criada = insercao.dados?.[0];
+  assert.equal(criada?.participante_id, a.id, 'T24 insert: dono = auth.uid()');
+  assert.equal(criada?.nota, 4, 'T24 insert: nota');
+  assert.equal(criada?.atualizado_em, null, 'T24 insert: atualizado_em vazio');
+
+  const leitura = await lerAvaliacao();
+  assert.equal(leitura.dados?.length, 1, 'T24 select após insert: 1 avaliação');
+
+  // Corrida simulada: segundo INSERT colide (o app então faz UPDATE).
+  const repetida = await requisitar('/rest/v1/feedbacks', {
+    metodo: 'POST',
+    token: a.token,
+    corpo: { checkin_id: c.id, nota: 2, comentario: 'Repetida' },
+    prefer: 'return=representation',
+  });
+  assert.equal(repetida.status, 409, 'T24 insert repetido: HTTP');
+  assert.equal(repetida.dados?.code, '23505', 'T24 insert repetido: código');
+
+  const atualizacao = await requisitar('/rest/v1/feedbacks', {
+    metodo: 'PATCH',
+    token: a.token,
+    consulta: { id: `eq.${criada.id}`, participante_id: `eq.${a.id}` },
+    corpo: { nota: 5, comentario: null },
+    prefer: 'return=representation',
+  });
+  assert.equal(atualizacao.status, 200, `T24 update: ${resumo(atualizacao)}`);
+  assert.equal(atualizacao.dados?.length, 1, 'T24 update: 1 linha');
+  assert.equal(atualizacao.dados[0].nota, 5, 'T24 update: nota');
+  assert.equal(atualizacao.dados[0].comentario, null, 'T24 update: comentário removido');
+  assert.ok(atualizacao.dados[0].atualizado_em, 'T24 update: atualizado_em preenchido (trigger)');
+
+  const final = await lerAvaliacao();
+  assert.equal(final.dados?.length, 1, 'T24: continua 1 avaliação (sem duplicata)');
+  assert.equal(final.dados[0].id, criada.id, 'T24: mesma avaliação');
+  assert.equal(final.dados[0].checkin_id, c.id, 'T24: checkin_id inalterado');
+  assert.equal(final.dados[0].criado_em, criada.criado_em, 'T24: criado_em inalterado');
+});
+
 caso('EXTRA tokens reais com as marcas corretas', async () => {
   const a = await usuarioA();
   assert.equal(conferirToken(a.token, 'A', a.id, true).is_anonymous, true, 'EXTRA A anônimo');

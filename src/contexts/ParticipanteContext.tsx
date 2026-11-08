@@ -7,8 +7,12 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { usarSupabase } from '../lib/ambiente';
 import { ErroCheckin, registrarCheckin } from '../services/checkins';
 import { obterOuCriarParticipanteId } from '../services/participante';
+
+// Backend fixo por build (EXPO_PUBLIC_ARENA_BACKEND é embutida no bundle).
+const MODO_SUPABASE = usarSupabase();
 
 type CheckinData = {
   nickname: string;
@@ -18,10 +22,18 @@ type CheckinData = {
 
 type ParticipanteContextValue = {
   // Identificação persistente (fica salva no aparelho).
+  // Modo local: UUID do aparelho. Modo supabase: ID do usuário do Supabase Auth,
+  // ou null enquanto o participante ainda não fez o cadastro.
   participanteId: string | null;
   carregandoParticipante: boolean;
   erroParticipante: Error | null;
   recarregarParticipanteId: () => void;
+  /**
+   * true quando o formulário de cadastro pode ser enviado.
+   * Modo local: UUID carregado. Modo supabase: inicialização concluída sem
+   * erro (a identidade é criada só ao confirmar o cadastro).
+   */
+  prontoParaCadastro: boolean;
 
   // Dados da sessão atual (somem ao voltar ao início).
   nickname: string;
@@ -71,12 +83,49 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let ativo = true;
 
-    obterOuCriarParticipanteId()
-      .then((id) => {
+    if (!MODO_SUPABASE) {
+      // Modo local: comportamento original (UUID do aparelho + SQLite).
+      obterOuCriarParticipanteId()
+        .then((id) => {
+          if (ativo) setParticipanteId(id);
+        })
+        .catch((erro: unknown) => {
+          console.error('[ParticipanteContext] Falha ao obter o ID do participante:', erro);
+          if (ativo) {
+            setErroParticipante(erro instanceof Error ? erro : new Error(String(erro)));
+          }
+        })
+        .finally(() => {
+          if (ativo) setCarregandoParticipante(false);
+        });
+
+      return () => {
+        ativo = false;
+      };
+    }
+
+    // Modo supabase: só CONSULTA a sessão já salva no aparelho (sem login
+    // anônimo) e passa a acompanhar mudanças de autenticação.
+    // Import dinâmico: no modo local o Supabase nunca é carregado.
+    let encerrarObservacao: (() => void) | null = null;
+
+    import('../services/identidadeSupabase')
+      .then(async (identidade) => {
+        if (!ativo) return;
+        const encerrar = identidade.observarIdentidade((id) => {
+          if (ativo) setParticipanteId(id);
+        });
+        if (!ativo) {
+          encerrar();
+          return;
+        }
+        encerrarObservacao = encerrar;
+
+        const id = await identidade.obterIdDaSessaoAtual();
         if (ativo) setParticipanteId(id);
       })
       .catch((erro: unknown) => {
-        console.error('[ParticipanteContext] Falha ao obter o ID do participante:', erro);
+        console.error('[ParticipanteContext] Falha ao consultar a sessão:', erro);
         if (ativo) {
           setErroParticipante(erro instanceof Error ? erro : new Error(String(erro)));
         }
@@ -87,8 +136,15 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
 
     return () => {
       ativo = false;
+      // Remove o listener de autenticação e para a renovação da sessão.
+      encerrarObservacao?.();
+      encerrarObservacao = null;
     };
   }, [tentativa]);
+
+  const prontoParaCadastro = MODO_SUPABASE
+    ? !carregandoParticipante && !erroParticipante
+    : Boolean(participanteId) && !carregandoParticipante;
 
   // Nova tentativa após um erro: volta ao estado de carregamento e dispara o efeito de novo.
   const recarregarParticipanteId = useCallback(() => {
@@ -147,6 +203,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       carregandoParticipante,
       erroParticipante,
       recarregarParticipanteId,
+      prontoParaCadastro,
       nickname,
       cidade,
       idade,
@@ -166,6 +223,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       carregandoParticipante,
       erroParticipante,
       recarregarParticipanteId,
+      prontoParaCadastro,
       nickname,
       cidade,
       idade,

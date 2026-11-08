@@ -149,9 +149,14 @@ Cada teste cria os próprios check-ins (estação `rls-<execução>-<teste>`), e
 | T17 | A | — | datas pelo servidor; avaliação de check-in na fila → trigger |
 | T18 | A, B | 1 de A e 1 de B, **ambos na fila na mesma estação** (conferido antes) | PATCH filtrado devolve **só** o de A; o de B continua na fila |
 | T19 | — | — | **somente SQL** (aparece como skip) |
+| **T20** | C (novo) | — | Fluxo de cadastro do app (`identidadeSupabase.ts`): SELECT da própria linha → `[]`; INSERT com `id = auth.uid()` → 201; INSERT repetido → 23505; UPDATE de apelido/cidade/idade → 1 linha com `atualizado_em`; `id` e `criado_em` inalterados. **Preparado em 2026-11-08, ainda não executado** |
+| **T21** | D (novo) | cadastro de D | Fluxo de `checkinsSupabase.registrarCheckin`: cadastro existe; INSERT `{arena_id, estacao}` → 201 (dono = `auth.uid()`, `na_fila`); INSERT repetido → 23505; busca por participante + arena + estação → **1** linha, o mesmo check-in. **Preparado, não executado** |
+| **T22** | A, B | 1 check-in de A e 1 de B, na fila | Fluxo de `concluirCheckin`: PATCH próprio → 1 linha com `concluido_em`; repetido → `[]` e a releitura devolve o concluído com `concluido_em` inalterado; PATCH no check-in de B → `[]`, invisível para A, e B confirma "na fila". **Preparado, não executado** |
+| **T23** | F (novo) | — | Check-in **sem cadastro**: verificação do app → `[]`; INSERT → 409 `23503` (chave estrangeira); nenhum check-in criado. **Preparado, não executado** |
+| **T24** | A | 1 check-in de A **concluído** | Fluxo de `feedbackSupabase.salvarFeedback`: check-in concluído confirmado; SELECT da avaliação → `[]`; INSERT `{checkin_id, nota, comentario}` → 201 (dono = `auth.uid()`, `atualizado_em` vazio); INSERT repetido → 23505; UPDATE de `nota` e `comentario` (inclusive para `null`) → 1 linha com `atualizado_em`; continua 1 avaliação, com `checkin_id` e `criado_em` inalterados. **Preparado, não executado** |
 | EXTRA | A, **P**, **E** | P fora e E dentro da equipe | `is_anonymous`: A = true; P e E = false |
 
-**Limite de logins anônimos:** a suíte completa cria 4 usuários anônimos (A, B, A2, B2). O padrão do Supabase é 30 por hora por IP.
+**Limite de logins anônimos:** a suíte completa cria 7 usuários anônimos (A, B, A2, B2, C do T20, D do T21 e F do T23). O padrão do Supabase é 30 por hora por IP.
 
 ## 6. Testes SQL (`rls.sql.test.sql`)
 

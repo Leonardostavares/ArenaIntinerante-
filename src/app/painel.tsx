@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { usarSupabase } from '../lib/ambiente';
 import { useParticipante } from '../contexts/ParticipanteContext';
 import { arenas } from '../data/arenas';
 import {
@@ -128,6 +129,11 @@ function BarraNota({ nota, quantidade, total }: { nota: number; quantidade: numb
   );
 }
 
+// Backend fixo por build. No modo supabase, os indicadores gerais só existirão
+// com resumo_painel() (etapa S3): até lá o painel NÃO consulta indicadores,
+// para não exibir dados parciais do próprio usuário como totais do evento.
+const MODO_SUPABASE = usarSupabase();
+
 export default function PainelScreen() {
   const { acessoEquipe, encerrarAcessoEquipe } = useParticipante();
 
@@ -142,7 +148,7 @@ export default function PainelScreen() {
   // O estado só muda nos retornos assíncronos.
   useFocusEffect(
     useCallback(() => {
-      if (!acessoEquipe) return;
+      if (!acessoEquipe || MODO_SUPABASE) return;
       let ativo = true;
       buscarDadosPainel()
         .then((resultado) => {
@@ -163,7 +169,7 @@ export default function PainelScreen() {
   // Recarrega sob demanda. `comIndicador` mostra o indicador do "puxar para atualizar".
   const recarregar = useCallback(
     async (comIndicador: boolean) => {
-      if (!acessoEquipe || atualizandoRef.current) return;
+      if (!acessoEquipe || MODO_SUPABASE || atualizandoRef.current) return;
       atualizandoRef.current = true;
       if (comIndicador) setAtualizando(true);
       try {
@@ -215,6 +221,27 @@ export default function PainelScreen() {
             ver o painel.
           </Text>
         </View>
+      </ScrollView>
+    );
+  }
+
+  // ---- Modo supabase: indicadores gerais ainda indisponíveis (etapa S3). ----
+  if (MODO_SUPABASE) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <ScreenHeader eyebrow="PAINEL DA EQUIPE" title="Acompanhamento" onBack={voltar} />
+        <View style={styles.infoBox} accessibilityRole="alert">
+          <Text style={styles.infoText}>
+            Os indicadores gerais do evento estarão disponíveis após a configuração do servidor
+            (etapa S3).
+          </Text>
+        </View>
+        <Pressable
+          onPress={sairDoPainel}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.secondaryButtonText}>Sair do painel</Text>
+        </Pressable>
       </ScrollView>
     );
   }

@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import Storage from 'expo-sqlite/kv-store';
+import { usarSupabase } from '../lib/ambiente';
 import { obterBanco } from './db';
 
 /**
@@ -76,6 +77,16 @@ export async function salvarDadosParticipante(dados: DadosParticipante): Promise
 
   if (!apelido) throw new Error('Informe o apelido.');
   if (!cidade) throw new Error('Informe a cidade.');
+
+  if (usarSupabase()) {
+    // Backend 'supabase': login anônimo sob demanda + cadastro no Supabase.
+    // O ID do Supabase fica só nesse caminho; os serviços locais (SQLite)
+    // continuam usando exclusivamente obterOuCriarParticipanteId().
+    // Import dinâmico: no backend 'local' o cliente Supabase nem é carregado.
+    const { salvarCadastroSupabase } = await import('./identidadeSupabase');
+    await salvarCadastroSupabase({ apelido, cidade, idade });
+    return;
+  }
 
   const id = await obterOuCriarParticipanteId();
   const db = await obterBanco();

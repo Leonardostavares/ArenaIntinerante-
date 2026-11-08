@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteBindValue } from 'expo-sqlite';
+import { usarSupabase } from '../lib/ambiente';
 import { obterBanco } from './db';
+import { ErroFeedback } from './erros';
 import { obterOuCriarParticipanteId } from './participante';
 
 /**
@@ -57,23 +59,9 @@ export type ResumoFeedbacks = {
   porNota: Record<1 | 2 | 3 | 4 | 5, number>;
 };
 
-export type CodigoErroFeedback = 'validacao' | 'nao_encontrado' | 'nao_permitido' | 'banco';
-
-/**
- * Erro dos serviços de feedback. O `codigo` permite que as telas diferenciem
- * erros esperados (validação, não encontrado, não permitido) de falhas técnicas (banco).
- */
-export class ErroFeedback extends Error {
-  readonly codigo: CodigoErroFeedback;
-  readonly causa?: unknown;
-
-  constructor(codigo: CodigoErroFeedback, mensagem: string, causa?: unknown) {
-    super(mensagem);
-    this.name = 'ErroFeedback';
-    this.codigo = codigo;
-    this.causa = causa;
-  }
-}
+// Classe de erro compartilhada (src/services/erros.ts), reexportada para que
+// os imports existentes (telas) continuem funcionando.
+export { ErroFeedback, type CodigoErroFeedback } from './erros';
 
 type LinhaFeedback = {
   id: string;
@@ -169,10 +157,18 @@ function montarFiltro(filtro: FiltroFeedbacks = {}): { where: string; params: SQ
 }
 
 /**
+ * Implementação remota (Supabase), carregada por import dinâmico SOMENTE no
+ * modo supabase. No modo local, nada do Supabase é carregado e as funções
+ * abaixo seguem o código SQLite original, sem alteração.
+ */
+const remoto = () => import('./feedbackSupabase');
+
+/**
  * Salva a avaliação de uma atividade concluída do participante deste aparelho.
  * Se já existir avaliação para o check-in, ela é atualizada (sem duplicar).
  */
 export async function salvarFeedback(dados: DadosFeedback): Promise<ResultadoFeedback> {
+  if (usarSupabase()) return (await remoto()).salvarFeedback(dados);
   const checkinId = textoObrigatorio(dados.checkinId, 'a atividade');
   const nota = validarNota(dados.nota);
   const comentario = validarComentario(dados.comentario);
@@ -231,6 +227,7 @@ export async function salvarFeedback(dados: DadosFeedback): Promise<ResultadoFee
 
 /** Avaliação de um check-in do participante deste aparelho (null se ainda não avaliou). */
 export async function obterFeedbackDoCheckin(checkinId: string): Promise<Feedback | null> {
+  if (usarSupabase()) return (await remoto()).obterFeedbackDoCheckin(checkinId);
   const id = textoObrigatorio(checkinId, 'a atividade');
   const participanteId = await obterOuCriarParticipanteId();
   return noBanco('consultar a avaliação', async () => {
@@ -245,6 +242,7 @@ export async function obterFeedbackDoCheckin(checkinId: string): Promise<Feedbac
 
 /** Avaliações do participante deste aparelho, da mais recente à mais antiga. */
 export async function listarMeusFeedbacks(): Promise<FeedbackDetalhado[]> {
+  if (usarSupabase()) return (await remoto()).listarMeusFeedbacks();
   const participanteId = await obterOuCriarParticipanteId();
   return noBanco('listar suas avaliações', async () => {
     const db = await obterBanco();
@@ -262,6 +260,8 @@ export async function listarMeusFeedbacks(): Promise<FeedbackDetalhado[]> {
 
 /** Lista as avaliações registradas neste aparelho, com filtro opcional por arena/estação. */
 export async function listarFeedbacks(filtro?: FiltroFeedbacks): Promise<FeedbackDetalhado[]> {
+  // Modo supabase: indicador geral bloqueado até a S3 (evita dados parciais).
+  if (usarSupabase()) return (await remoto()).listarFeedbacks(filtro);
   const { where, params } = montarFiltro(filtro);
   return noBanco('listar as avaliações', async () => {
     const db = await obterBanco();
@@ -279,6 +279,8 @@ export async function listarFeedbacks(filtro?: FiltroFeedbacks): Promise<Feedbac
 
 /** Total, média e distribuição das notas, com filtro opcional por arena/estação. */
 export async function resumoFeedbacks(filtro?: FiltroFeedbacks): Promise<ResumoFeedbacks> {
+  // Modo supabase: indicador geral bloqueado até a S3 (evita dados parciais).
+  if (usarSupabase()) return (await remoto()).resumoFeedbacks(filtro);
   const { where, params } = montarFiltro(filtro);
   return noBanco('calcular o resumo das avaliações', async () => {
     const db = await obterBanco();

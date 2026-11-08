@@ -25,9 +25,35 @@ function ehErroDeValidacao(erro: unknown): erro is Error {
   return erro instanceof Error && ERRO_DE_VALIDACAO.test(erro.message);
 }
 
+// Erros do backend Supabase, identificados pelo nome para NÃO importar o
+// módulo do Supabase nesta tela (no modo local ele nunca é carregado).
+type ErroComCodigo = Error & { codigo?: string };
+
+function ehErroDeIdentidade(erro: unknown): erro is ErroComCodigo {
+  return erro instanceof Error && erro.name === 'ErroIdentidade';
+}
+
+function ehErroDeConfiguracao(erro: unknown): erro is Error {
+  return erro instanceof Error && erro.name === 'ErroConfiguracaoSupabase';
+}
+
+/** Falhas esperadas (sem conexão, limite de tentativas) não vão para o console. */
+function ehFalhaEsperada(erro: unknown): boolean {
+  if (ehErroDeValidacao(erro)) return true;
+  return ehErroDeIdentidade(erro) && (erro.codigo === 'rede' || erro.codigo === 'limite');
+}
+
 function mensagemDeErro(erro: unknown): string {
   if (ehErroDeValidacao(erro)) {
     return erro.message;
+  }
+  if (ehErroDeIdentidade(erro)) {
+    // Mensagens de ErroIdentidade já são seguras para exibir (sem conexão,
+    // muitas tentativas, acesso indisponível etc.).
+    return erro.message;
+  }
+  if (ehErroDeConfiguracao(erro)) {
+    return 'O cadastro está indisponível no momento. Avise a equipe do evento.';
   }
   return 'Não foi possível salvar seus dados. Tente novamente.';
 }
@@ -37,7 +63,7 @@ export default function CheckinScreen() {
   const arena = arenas.find((item) => item.id === arenaId);
   const {
     checkin,
-    participanteId,
+    prontoParaCadastro,
     carregandoParticipante,
     erroParticipante,
     recarregarParticipanteId,
@@ -51,8 +77,9 @@ export default function CheckinScreen() {
   const salvandoRef = useRef(false);
 
   const camposPreenchidos = Boolean(nickname.trim() && cidade.trim() && idade.trim() && arena);
-  const identificacaoPronta = Boolean(participanteId) && !carregandoParticipante;
-  const podeContinuar = camposPreenchidos && identificacaoPronta && !salvando;
+  // Modo local: exige o UUID do aparelho já carregado (comportamento original).
+  // Modo supabase: basta a inicialização concluída; a identidade é criada ao confirmar.
+  const podeContinuar = camposPreenchidos && prontoParaCadastro && !salvando;
 
   function alterarCampo(setter: (valor: string) => void) {
     return (valor: string) => {
@@ -71,16 +98,17 @@ export default function CheckinScreen() {
     const dados = { nickname: nickname.trim(), cidade: cidade.trim(), idade: idade.trim() };
 
     try {
-      // Grava no SQLite só depois do toque em "Continuar" (ação do participante).
+      // Grava só depois do toque em "Continuar" (ação do participante):
+      // no SQLite (modo local) ou no Supabase, com login anônimo sob demanda.
       await salvarDadosParticipante({
         apelido: dados.nickname,
         cidade: dados.cidade,
         idade: dados.idade,
       });
     } catch (erro) {
-      // Erros de validação são esperados e já aparecem na tela;
-      // só falhas técnicas (banco, disco etc.) vão para o console.
-      if (!ehErroDeValidacao(erro)) {
+      // Erros de validação e falhas esperadas (sem conexão, limite) já aparecem
+      // na tela; só falhas técnicas vão para o console.
+      if (!ehFalhaEsperada(erro)) {
         console.error('[checkin] Falha ao salvar dados do participante:', erro);
       }
       setErroSalvar(mensagemDeErro(erro));
