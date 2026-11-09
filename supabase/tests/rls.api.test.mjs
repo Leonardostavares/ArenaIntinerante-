@@ -9,9 +9,10 @@
  * se recusa a rodar. Ver supabase/tests/README.md, seção 2.
  *
  * Execução (Node 24, sem dependências):
- *   node --env-file=.env.test.local --test supabase/tests/rls.api.test.mjs
+ *   node --env-file=supabase/tests/.env.test.local --test supabase/tests/rls.api.test.mjs
  * Um teste só (ex.: T7d):
- *   node --env-file=.env.test.local --test --test-name-pattern="^T7d " supabase/tests/rls.api.test.mjs
+ *   node --env-file=supabase/tests/.env.test.local --test --test-name-pattern="^T7d " supabase/tests/rls.api.test.mjs
+ * O arquivo de ambiente NÃO pode ficar na raiz: o Expo leria .env* da raiz no bundle.
  */
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';

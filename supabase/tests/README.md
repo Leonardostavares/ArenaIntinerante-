@@ -64,11 +64,13 @@ A referência não é segredo (ela aparece na URL pública do projeto), então p
 
 ## 3. Arquivo de credenciais (`.env.test.local`)
 
-Crie o arquivo **na raiz do projeto**, você mesmo. Ele termina em `.local` e já é ignorado pelo `.gitignore`. Confirme antes do primeiro uso:
+Crie o arquivo em **`supabase/tests/.env.test.local`**, você mesmo. Ele termina em `.local` e já é ignorado pelo `.gitignore`. Confirme antes do primeiro uso:
 
 ```bash
-git check-ignore -v .env.test.local
+git check-ignore -v supabase/tests/.env.test.local
 ```
+
+**Nunca na raiz do projeto:** em desenvolvimento, o Expo (SDK 57) inclui no bundle todo arquivo `.env*` da raiz e só sabe converter `.env`, `.env.local`, `.env.development`, `.env.production` e suas variações `.local`. Qualquer outro nome, como `.env.test.local`, é lido como JavaScript e quebra o bundle com `SyntaxError`, mostrando o conteúdo do arquivo na tela de erro.
 
 Variáveis (só os nomes aqui; **não** coloque valores neste README, no chat ou no git):
 
@@ -79,7 +81,7 @@ Variáveis (só os nomes aqui; **não** coloque valores neste README, no chat ou
 | `ARENA_TEST_P_EMAIL`, `ARENA_TEST_P_PASSWORD` | login de P |
 | `ARENA_TEST_E_EMAIL`, `ARENA_TEST_E_PASSWORD` | login de E |
 
-Sugestão: `chmod 600 .env.test.local`.
+Sugestão: `chmod 600 supabase/tests/.env.test.local`.
 
 **Segredos fora da saída:** chave, senhas, e-mails e tokens (inclusive nas formas codificadas para URL e JSON) são substituídos por `***` em tudo o que o script imprime. Tokens ficam só em memória. Os ids dos usuários de teste **são** impressos, porque servem para a limpeza (seção 7).
 
@@ -88,13 +90,13 @@ Sugestão: `chmod 600 .env.test.local`.
 Suíte completa:
 
 ```bash
-node --env-file=.env.test.local --test supabase/tests/rls.api.test.mjs
+node --env-file=supabase/tests/.env.test.local --test supabase/tests/rls.api.test.mjs
 ```
 
 Um teste só (use `^` e o espaço depois do nome para não pegar T7b, T7c… junto com T7):
 
 ```bash
-node --env-file=.env.test.local --test --test-name-pattern="^T7d " supabase/tests/rls.api.test.mjs
+node --env-file=supabase/tests/.env.test.local --test --test-name-pattern="^T7d " supabase/tests/rls.api.test.mjs
 ```
 
 ### Como ler o resultado
