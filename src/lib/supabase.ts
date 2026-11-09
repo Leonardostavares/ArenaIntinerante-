@@ -1,6 +1,4 @@
-// Instala um localStorage global persistido em SQLite (Expo SDK 57,
-// expo-sqlite ~57.0.4). No web é ignorado e o localStorage do navegador é usado.
-import 'expo-sqlite/localStorage/install';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, type AppStateStatus, type NativeEventSubscription } from 'react-native';
 
@@ -13,7 +11,8 @@ import { AppState, type AppStateStatus, type NativeEventSubscription } from 'rea
  * - O cliente é criado sob demanda (obterSupabase) e só depois de validar a
  *   configuração. Se as variáveis estiverem ausentes ou inválidas, nenhuma
  *   conexão é criada e um ErroConfiguracaoSupabase é lançado.
- * - A sessão fica persistida no aparelho (localStorage do expo-sqlite).
+ * - A sessão fica persistida no aparelho, exclusivamente no AsyncStorage
+ *   (@react-native-async-storage/async-storage).
  */
 
 /** URL do projeto: exatamente https://<referência de 20 caracteres>.supabase.co */
@@ -80,7 +79,7 @@ export function obterSupabase(): SupabaseClient {
     const { url, chavePublica } = lerConfiguracao();
     cliente = createClient(url, chavePublica, {
       auth: {
-        storage: localStorage,
+        storage: AsyncStorage,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,
