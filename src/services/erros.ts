@@ -1,10 +1,10 @@
 /**
  * Classes de erro compartilhadas pelos serviços de dados.
  *
- * Usadas tanto pelo caminho local (SQLite) quanto pelo caminho remoto
- * (Supabase), para que as telas tratem os erros da mesma forma nos dois
- * backends. Este arquivo não importa nenhum outro módulo do app, o que
- * evita dependências circulares.
+ * Usadas pelos serviços Supabase (e convertidas a partir dos erros da API
+ * em errosSupabase.ts), para que as telas tratem os erros de forma única.
+ * Este arquivo não importa nenhum outro módulo do app, o que evita
+ * dependências circulares.
  *
  * checkins.ts e feedback.ts reexportam estas classes, então os imports
  * existentes nas telas continuam funcionando sem alteração.

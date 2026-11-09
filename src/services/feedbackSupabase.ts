@@ -13,11 +13,10 @@ import type {
 import { obterIdDaSessaoAtual } from './identidadeSupabase';
 
 /**
- * Avaliações no Supabase (usado SOMENTE quando EXPO_PUBLIC_ARENA_BACKEND = 'supabase').
+ * Avaliações no Supabase (implementação usada por feedback.ts, a interface pública).
  *
  * Regras:
  * - NUNCA faz login anônimo: usa apenas a sessão já existente.
- * - NUNCA usa o UUID local nem o SQLite.
  * - Salvar = SELECT da própria avaliação -> UPDATE (nota, comentario) ou INSERT
  *   (checkin_id, nota, comentario). SEM upsert: o upsert padrão da API faria
  *   SET em checkin_id, coluna sem permissão de UPDATE (teste T9b).
@@ -62,7 +61,7 @@ function paraFeedback(linha: LinhaFeedback): Feedback {
 }
 
 // ---------------------------------------------------------------------
-// Validações: mesmas regras e mensagens do caminho local.
+// Validações (mensagens exibidas nas telas).
 // ---------------------------------------------------------------------
 
 function textoObrigatorio(valor: string, campo: string): string {
@@ -160,7 +159,7 @@ export async function salvarFeedback(dados: DadosFeedback): Promise<ResultadoFee
   const participanteId = await exigirSessao();
   const supabase = obterSupabase();
 
-  // Mesmas verificações (e mensagens) do caminho local; o trigger da 0001
+  // Verifica antes de gravar (mensagem amigável); o trigger da 0001
   // repete a regra no banco.
   const { data: checkin, error: erroCheckin } = await supabase
     .from('checkins')
@@ -244,7 +243,7 @@ export async function listarMeusFeedbacks(): Promise<FeedbackDetalhado[]> {
     })
   );
 
-  // Mesma ordem do caminho local: COALESCE(atualizado_em, criado_em) DESC.
+  // Ordem: COALESCE(atualizado_em, criado_em) DESC (mais recente primeiro).
   const momento = (f: Feedback) => f.atualizadoEm ?? f.criadoEm;
   return feedbacks
     .sort((x, y) => (momento(x) < momento(y) ? 1 : momento(x) > momento(y) ? -1 : 0))
@@ -256,7 +255,7 @@ export async function listarMeusFeedbacks(): Promise<FeedbackDetalhado[]> {
 }
 
 // ---------------------------------------------------------------------
-// Indicadores gerais: bloqueados no modo supabase até a etapa S3.
+// Indicadores gerais: bloqueados até a etapa S3.
 // ---------------------------------------------------------------------
 
 export async function listarFeedbacks(_filtro?: FiltroFeedbacks): Promise<FeedbackDetalhado[]> {

@@ -7,12 +7,8 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { usarSupabase } from '../lib/ambiente';
 import { ErroCheckin, registrarCheckin } from '../services/checkins';
-import { obterOuCriarParticipanteId } from '../services/participante';
-
-// Backend fixo por build (EXPO_PUBLIC_ARENA_BACKEND é embutida no bundle).
-const MODO_SUPABASE = usarSupabase();
+import { obterIdDaSessaoAtual, observarIdentidade } from '../services/identidadeSupabase';
 
 type CheckinData = {
   nickname: string;
@@ -21,17 +17,15 @@ type CheckinData = {
 };
 
 type ParticipanteContextValue = {
-  // Identificação persistente (fica salva no aparelho).
-  // Modo local: UUID do aparelho. Modo supabase: ID do usuário do Supabase Auth,
-  // ou null enquanto o participante ainda não fez o cadastro.
+  // Identificação: ID do usuário anônimo do Supabase Auth (sessão salva no
+  // aparelho), ou null enquanto o participante ainda não fez o cadastro.
   participanteId: string | null;
   carregandoParticipante: boolean;
   erroParticipante: Error | null;
   recarregarParticipanteId: () => void;
   /**
-   * true quando o formulário de cadastro pode ser enviado.
-   * Modo local: UUID carregado. Modo supabase: inicialização concluída sem
-   * erro (a identidade é criada só ao confirmar o cadastro).
+   * true quando o formulário de cadastro pode ser enviado: inicialização
+   * concluída sem erro (a identidade é criada só ao confirmar o cadastro).
    */
   prontoParaCadastro: boolean;
 
@@ -42,10 +36,10 @@ type ParticipanteContextValue = {
   arenaId: string | null;
   station: string | null;
   queueNumber: string | null;
-  /** Id (no SQLite) do check-in da atividade atual; null fora da fila. */
+  /** Id (no Supabase) do check-in da atividade atual; null fora da fila. */
   checkinAtualId: string | null;
   checkin: (arenaId: string, dados: CheckinData) => void;
-  /** Registra o check-in no SQLite e, só depois, atualiza a fila. Rejeita se falhar. */
+  /** Registra o check-in no Supabase e, só depois, atualiza a fila. Rejeita se falhar. */
   joinQueue: (station: string) => Promise<void>;
   resetParticipante: () => void;
 
@@ -77,51 +71,21 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
   // Nunca é salvo no aparelho e não é alterado por resetParticipante().
   const [acessoEquipe, setAcessoEquipe] = useState(false);
 
-  // Carrega o UUID uma vez quando o app abre (e de novo só se pedirem nova tentativa).
-  // Só lê/cria o identificador: nenhum dado pessoal é gravado aqui.
-  // O estado só é alterado nos retornos assíncronos, nunca direto no corpo do efeito.
+  // Ao abrir o app (e de novo só se pedirem nova tentativa): só CONSULTA a
+  // sessão já salva no aparelho (sem login anônimo) e passa a acompanhar
+  // mudanças de autenticação. O login anônimo acontece só no cadastro.
   useEffect(() => {
     let ativo = true;
-
-    if (!MODO_SUPABASE) {
-      // Modo local: comportamento original (UUID do aparelho + SQLite).
-      obterOuCriarParticipanteId()
-        .then((id) => {
-          if (ativo) setParticipanteId(id);
-        })
-        .catch((erro: unknown) => {
-          console.error('[ParticipanteContext] Falha ao obter o ID do participante:', erro);
-          if (ativo) {
-            setErroParticipante(erro instanceof Error ? erro : new Error(String(erro)));
-          }
-        })
-        .finally(() => {
-          if (ativo) setCarregandoParticipante(false);
-        });
-
-      return () => {
-        ativo = false;
-      };
-    }
-
-    // Modo supabase: só CONSULTA a sessão já salva no aparelho (sem login
-    // anônimo) e passa a acompanhar mudanças de autenticação.
-    // Import dinâmico: no modo local o Supabase nunca é carregado.
     let encerrarObservacao: (() => void) | null = null;
 
-    import('../services/identidadeSupabase')
-      .then(async (identidade) => {
+    // Promessa: qualquer falha (inclusive de configuração) vira erroParticipante.
+    Promise.resolve()
+      .then(async () => {
         if (!ativo) return;
-        const encerrar = identidade.observarIdentidade((id) => {
+        encerrarObservacao = observarIdentidade((id) => {
           if (ativo) setParticipanteId(id);
         });
-        if (!ativo) {
-          encerrar();
-          return;
-        }
-        encerrarObservacao = encerrar;
-
-        const id = await identidade.obterIdDaSessaoAtual();
+        const id = await obterIdDaSessaoAtual();
         if (ativo) setParticipanteId(id);
       })
       .catch((erro: unknown) => {
@@ -142,9 +106,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
     };
   }, [tentativa]);
 
-  const prontoParaCadastro = MODO_SUPABASE
-    ? !carregandoParticipante && !erroParticipante
-    : Boolean(participanteId) && !carregandoParticipante;
+  const prontoParaCadastro = !carregandoParticipante && !erroParticipante;
 
   // Nova tentativa após um erro: volta ao estado de carregamento e dispara o efeito de novo.
   const recarregarParticipanteId = useCallback(() => {
@@ -176,9 +138,9 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
     [arenaId]
   );
 
-  // Limpa só os dados da sessão. O participanteId NÃO é apagado:
-  // ele identifica o aparelho e precisa continuar o mesmo.
-  // Os check-ins gravados no SQLite também permanecem.
+  // Limpa só os dados da tela. O participanteId e a sessão NÃO são apagados:
+  // identificam o participante e precisam continuar os mesmos.
+  // Os check-ins gravados no Supabase também permanecem.
   const resetParticipante = useCallback(() => {
     setNickname('');
     setCidade('');

@@ -6,11 +6,10 @@ import { converterErroCheckin } from './errosSupabase';
 import { obterIdDaSessaoAtual } from './identidadeSupabase';
 
 /**
- * Check-ins no Supabase (usado SOMENTE quando EXPO_PUBLIC_ARENA_BACKEND = 'supabase').
+ * Check-ins no Supabase (implementação usada por checkins.ts, a interface pública).
  *
  * Regras:
  * - NUNCA faz login anônimo: usa apenas a sessão já existente (criada no cadastro).
- * - NUNCA usa o UUID local nem o SQLite.
  * - Respeita RLS, permissões por coluna e triggers (0001/0002/0003):
  *     INSERT só de arena_id e estacao (participante_id = auth.uid() pelo default;
  *       status 'na_fila' e datas definidos pelo trigger);
@@ -49,7 +48,7 @@ function paraCheckin(linha: LinhaCheckin): Checkin {
   };
 }
 
-/** Mesmas mensagens de validação do caminho local. */
+/** Validação de texto obrigatório (mensagens exibidas nas telas). */
 function textoObrigatorio(valor: string, campo: string): string {
   const texto = typeof valor === 'string' ? valor.trim() : '';
   if (!texto) {
@@ -225,7 +224,7 @@ export async function listarPendentesDeFeedback(): Promise<Checkin[]> {
 }
 
 // ---------------------------------------------------------------------
-// Indicadores gerais: bloqueados no modo supabase até a etapa S3.
+// Indicadores gerais: bloqueados até a etapa S3.
 // (Com RLS, devolveriam só os dados do próprio usuário, como se fossem
 // totais do evento.)
 // ---------------------------------------------------------------------

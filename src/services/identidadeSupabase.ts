@@ -4,9 +4,8 @@ import { iniciarRenovacaoDaSessao, obterSupabase, pararRenovacaoDaSessao } from 
 /**
  * Identidade e cadastro do participante no Supabase.
  *
- * Usado SOMENTE quando EXPO_PUBLIC_ARENA_BACKEND = 'supabase'.
- * O ID do Supabase NUNCA é repassado aos serviços locais (SQLite): eles
- * continuam usando obterOuCriarParticipanteId(), em participante.ts.
+ * Única fonte de identidade do app: o ID do participante é o ID do usuário
+ * anônimo do Supabase Auth (usado por participante.ts e pelo contexto).
  *
  * Regras:
  * - Login anônimo SOB DEMANDA: só quando o participante confirma o cadastro.
