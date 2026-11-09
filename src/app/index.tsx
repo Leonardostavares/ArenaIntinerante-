@@ -6,7 +6,7 @@ export default function PortalScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>ARENA ITINERANTE</Text>
+        <Text style={styles.eyebrow}>ARENA</Text>
         <Text style={styles.title}>Bem-vindo!</Text>
         <Text style={styles.subtitle}>Quem esta acessando agora?</Text>
       </View>

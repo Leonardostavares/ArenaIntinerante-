@@ -21,7 +21,7 @@
     "react-dom": "19.2.3"
   },
   "scripts": {
-    "start": "expo start --tunnel",
+    "start": "expo start --lan",
     "start:clear": "expo start --clear",
     "start:lan": "expo start --lan",
     "start:tunnel": "expo start --tunnel",
