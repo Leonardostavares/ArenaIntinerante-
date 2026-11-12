@@ -109,7 +109,9 @@ export function iniciarRenovacaoDaSessao(): () => void {
     }
   };
 
-  aplicar(AppState.currentState);
+  // RN 0.88 tipa AppState.currentState como string | null | undefined;
+  // qualquer valor fora de 'active' cai no mesmo braço de stopAutoRefresh de antes.
+  aplicar((AppState.currentState ?? 'unknown') as AppStateStatus);
   assinaturaEstadoDoApp = AppState.addEventListener('change', aplicar);
   return pararRenovacaoDaSessao;
 }
