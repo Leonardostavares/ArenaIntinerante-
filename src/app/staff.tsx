@@ -1,18 +1,33 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { useParticipante } from '../contexts/ParticipanteContext';
+import { entrarComoEquipe, ErroEquipe } from '../services/equipeSupabase';
 import { colors } from '../styles/colors';
 
 export default function StaffScreen() {
+  const { liberarAcessoEquipe } = useParticipante();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [entrando, setEntrando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  const podeEntrar = email.trim() && senha.trim();
+  const podeEntrar = Boolean(email.trim() && senha.trim()) && !entrando;
 
-  function handleLogin() {
+  async function handleLogin() {
     if (!podeEntrar) return;
-    // TODO: validar credenciais com o backend quando a integracao existir.
+    setErro(null);
+    setEntrando(true);
+    try {
+      await entrarComoEquipe(email.trim(), senha);
+      liberarAcessoEquipe();
+      router.replace('/painel');
+    } catch (e) {
+      setErro(e instanceof ErroEquipe ? e.message : 'Não foi possível entrar. Tente novamente.');
+    } finally {
+      setEntrando(false);
+    }
   }
 
   return (
@@ -35,6 +50,7 @@ export default function StaffScreen() {
         style={styles.input}
         keyboardType="email-address"
         autoCapitalize="none"
+        editable={!entrando}
       />
 
       <Text style={styles.label}>Senha</Text>
@@ -45,7 +61,10 @@ export default function StaffScreen() {
         placeholderTextColor={colors.placeholder}
         style={styles.input}
         secureTextEntry
+        editable={!entrando}
       />
+
+      {erro ? <Text style={styles.errorText}>{erro}</Text> : null}
 
       <Pressable
         onPress={handleLogin}
@@ -56,7 +75,11 @@ export default function StaffScreen() {
           pressed && podeEntrar && styles.pressed,
         ]}
       >
-        <Text style={styles.primaryButtonText}>Entrar</Text>
+        {entrando ? (
+          <ActivityIndicator color={colors.primaryText} />
+        ) : (
+          <Text style={styles.primaryButtonText}>Entrar</Text>
+        )}
       </Pressable>
     </ScrollView>
   );
@@ -90,6 +113,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 18,
     padding: 16,
+  },
+  errorText: {
+    color: '#ff8080',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 16,
   },
   primaryButton: {
     alignItems: 'center',
