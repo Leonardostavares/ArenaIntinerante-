@@ -1,5 +1,5 @@
 import type { PostgrestError } from '@supabase/supabase-js';
-import { ErroCheckin, ErroFeedback } from './erros';
+import { ErroCheckin, ErroFeedback, ErroPainel } from './erros';
 
 /**
  * Conversão de erros do Supabase (PostgREST) para os tipos compartilhados.
@@ -90,5 +90,24 @@ export function converterErroFeedback(
       return new ErroFeedback('nao_permitido', MENSAGEM_NAO_PERMITIDO, erro);
     default:
       return new ErroFeedback('banco', mensagemPadrao, erro);
+  }
+}
+
+/** Converte um erro do PostgREST para ErroPainel (funções da equipe). */
+export function converterErroPainel(
+  erro: ErroPostgrest,
+  mensagemPadrao = 'Não foi possível carregar os indicadores. Tente novamente.'
+): ErroPainel {
+  if (ehFalhaDeRede(erro)) return new ErroPainel('banco', MENSAGEM_SEM_CONEXAO, erro);
+
+  switch (erro.code) {
+    case '42501':
+      return new ErroPainel('nao_permitido', 'Esta área é exclusiva da equipe.', erro);
+    case '23514':
+    case '23502':
+    case '22P02':
+      return new ErroPainel('banco', MENSAGEM_DADOS_INVALIDOS, erro);
+    default:
+      return new ErroPainel('banco', mensagemPadrao, erro);
   }
 }

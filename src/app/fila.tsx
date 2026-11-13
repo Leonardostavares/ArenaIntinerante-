@@ -2,7 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useParticipante } from '../contexts/ParticipanteContext';
-import { concluirCheckin, ErroCheckin, obterCheckin } from '../services/checkins';
+import { concluirCheckin, ErroCheckin, obterCheckin, obterPosicaoNaFila } from '../services/checkins';
 import { obterFeedbackDoCheckin } from '../services/feedback';
 import { colors } from '../styles/colors';
 
@@ -27,6 +27,8 @@ export default function FilaScreen() {
   const [temAvaliacao, setTemAvaliacao] = useState<boolean | null>(null);
   // Evita abrir a tela de avaliação duas vezes com toques rápidos.
   const navegandoRef = useRef(false);
+  // Posição na fila (null enquanto não se sabe); 0 quando já concluído.
+  const [posicao, setPosicao] = useState<number | null>(null);
 
   // Sempre que a tela volta a ficar visível (ex.: ao retornar da avaliação),
   // libera a navegação e relê se já existe avaliação para esta atividade.
@@ -73,6 +75,31 @@ export default function FilaScreen() {
     };
   }, [checkinAtualId]);
 
+  // Posição na fila: lê ao entrar e atualiza a cada poucos segundos
+  // enquanto a atividade não for concluída (outros participantes podem
+  // ser atendidos e a posição muda sem nenhuma ação deste aparelho).
+  useEffect(() => {
+    if (!checkinAtualId || concluida) return;
+    let ativo = true;
+
+    function atualizar() {
+      obterPosicaoNaFila(checkinAtualId!)
+        .then((valor) => {
+          if (ativo) setPosicao(valor);
+        })
+        .catch((falha: unknown) => {
+          console.error('[fila] Falha ao consultar a posição:', falha);
+        });
+    }
+
+    atualizar();
+    const intervalo = setInterval(atualizar, 8000);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+    };
+  }, [checkinAtualId, concluida]);
+
   async function concluirAtividade() {
     if (!checkinAtualId || concluida || concluindoRef.current) return;
 
@@ -111,7 +138,11 @@ export default function FilaScreen() {
         <Text style={styles.helperText}>{station}</Text>
         <View style={styles.positionBox}>
           <Text style={styles.positionLabel}>SUA POSICAO</Text>
-          <Text style={styles.positionValue}>3o</Text>
+          {posicao === null ? (
+            <ActivityIndicator color={colors.text} style={styles.positionLoading} />
+          ) : (
+            <Text style={styles.positionValue}>{posicao}o</Text>
+          )}
           <Text style={styles.positionHint}>Acompanhe o chamado no monitor da Arena.</Text>
         </View>
 
@@ -230,6 +261,9 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: '900',
     marginVertical: 6,
+  },
+  positionLoading: {
+    marginVertical: 20,
   },
   positionHint: {
     color: colors.textMuted,

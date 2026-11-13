@@ -26,6 +26,13 @@ export default function PortalScreen() {
       >
         <Text style={styles.staffText}>🔑 Sou da equipe</Text>
       </Pressable>
+
+      <Pressable
+        onPress={() => router.push('/monitor')}
+        style={({ pressed }) => [styles.monitorLink, pressed && styles.pressed]}
+      >
+        <Text style={styles.monitorLinkText}>Configurar monitor da arena</Text>
+      </Pressable>
     </View>
   );
 }
@@ -91,6 +98,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 15,
     fontWeight: '700',
+  },
+  monitorLink: {
+    alignItems: 'center',
+    marginTop: 20,
+    padding: 8,
+  },
+  monitorLinkText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.75,

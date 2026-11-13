@@ -28,6 +28,24 @@ export class ErroCheckin extends Error {
   }
 }
 
+export type CodigoErroPainel = 'nao_permitido' | 'banco';
+
+/**
+ * Erro dos serviços do painel da equipe (indicadores agregados e arenas).
+ * O `codigo` diferencia "você não é da equipe" de falhas técnicas.
+ */
+export class ErroPainel extends Error {
+  readonly codigo: CodigoErroPainel;
+  readonly causa?: unknown;
+
+  constructor(codigo: CodigoErroPainel, mensagem: string, causa?: unknown) {
+    super(mensagem);
+    this.name = 'ErroPainel';
+    this.codigo = codigo;
+    this.causa = causa;
+  }
+}
+
 export type CodigoErroFeedback = 'validacao' | 'nao_encontrado' | 'nao_permitido' | 'banco';
 
 /**

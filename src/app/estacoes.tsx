@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../components/Card';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useParticipante } from '../contexts/ParticipanteContext';
-import { arenas } from '../data/arenas';
+import { Arena, obterArena } from '../services/arenasSupabase';
 import { ErroCheckin } from '../services/checkins';
 import { colors } from '../styles/colors';
 
@@ -12,12 +12,31 @@ const COR_ERRO = '#ff9b9b';
 
 export default function EstacoesScreen() {
   const { arenaId, joinQueue } = useParticipante();
-  const arena = arenas.find((item) => item.id === arenaId);
+  const [arena, setArena] = useState<Arena | null>(null);
+  const [carregandoArena, setCarregandoArena] = useState(() => Boolean(arenaId));
   // Estação sendo registrada no momento (null quando nada está em andamento).
   const [registrando, setRegistrando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Trava imediata contra toques repetidos (o estado só muda na próxima renderização).
   const registrandoRef = useRef(false);
+
+  useEffect(() => {
+    if (!arenaId) return;
+    let ativo = true;
+    obterArena(arenaId)
+      .then((valor) => {
+        if (ativo) setArena(valor);
+      })
+      .catch((falha: unknown) => {
+        console.error('[estacoes] Falha ao carregar a arena:', falha);
+      })
+      .finally(() => {
+        if (ativo) setCarregandoArena(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [arenaId]);
 
   async function pickStation(station: string) {
     if (registrandoRef.current) return;
@@ -60,21 +79,25 @@ export default function EstacoesScreen() {
         </View>
       ) : null}
 
-      {arena?.stations.map((station) => (
-        <View
-          key={station}
-          style={[
-            registrando ? styles.bloqueado : null,
-            registrando && registrando !== station ? styles.disabled : null,
-          ]}
-        >
-          <Card
-            title={station}
-            linkLabel={registrando === station ? 'Entrando na fila...' : 'Fila aberta'}
-            onPress={() => pickStation(station)}
-          />
-        </View>
-      ))}
+      {carregandoArena ? (
+        <ActivityIndicator color={colors.text} style={styles.loading} />
+      ) : (
+        arena?.estacoes.map((station) => (
+          <View
+            key={station}
+            style={[
+              registrando ? styles.bloqueado : null,
+              registrando && registrando !== station ? styles.disabled : null,
+            ]}
+          >
+            <Card
+              title={station}
+              linkLabel={registrando === station ? 'Entrando na fila...' : 'Fila aberta'}
+              onPress={() => pickStation(station)}
+            />
+          </View>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -91,6 +114,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 20,
+  },
+  loading: {
+    marginTop: 20,
   },
   errorBox: {
     borderColor: COR_ERRO,

@@ -180,6 +180,19 @@ export async function obterCheckin(checkinId: string): Promise<Checkin | null> {
   return data ? paraCheckin(data as LinhaCheckin) : null;
 }
 
+/**
+ * Posição (1-based) do check-in na fila da própria atividade; 0 se já
+ * concluído. Usa a função posicao_na_fila() (SECURITY DEFINER): o RLS
+ * normal só deixaria ver os próprios check-ins, mas a posição depende de
+ * contar os de outros participantes na mesma arena + estação.
+ */
+export async function obterPosicaoNaFila(checkinId: string): Promise<number> {
+  const id = textoObrigatorio(checkinId, 'o check-in');
+  const { data, error } = await obterSupabase().rpc('posicao_na_fila', { p_checkin_id: id });
+  if (error) throw converterErroCheckin(error, 'Não foi possível consultar sua posição na fila.');
+  return Number(data ?? 0);
+}
+
 /** Check-ins do participante da sessão, do mais recente ao mais antigo. */
 export async function listarMeusCheckins(): Promise<Checkin[]> {
   const participanteId = await sessaoOpcional();

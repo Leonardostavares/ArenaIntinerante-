@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useParticipante } from '../contexts/ParticipanteContext';
-import { arenas } from '../data/arenas';
+import { Arena, obterArena } from '../services/arenasSupabase';
 import { salvarDadosParticipante } from '../services/participante';
 import { colors } from '../styles/colors';
 
@@ -60,7 +60,27 @@ function mensagemDeErro(erro: unknown): string {
 
 export default function CheckinScreen() {
   const { arenaId } = useLocalSearchParams<{ arenaId: string }>();
-  const arena = arenas.find((item) => item.id === arenaId);
+  const [arena, setArena] = useState<Arena | null>(null);
+  const [carregandoArena, setCarregandoArena] = useState(() => Boolean(arenaId));
+
+  useEffect(() => {
+    if (!arenaId) return;
+    let ativo = true;
+    obterArena(arenaId)
+      .then((valor) => {
+        if (ativo) setArena(valor);
+      })
+      .catch((falha: unknown) => {
+        console.error('[checkin] Falha ao carregar a arena:', falha);
+      })
+      .finally(() => {
+        if (ativo) setCarregandoArena(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [arenaId]);
+
   const {
     checkin,
     prontoParaCadastro,
@@ -79,7 +99,7 @@ export default function CheckinScreen() {
   const camposPreenchidos = Boolean(nickname.trim() && cidade.trim() && idade.trim() && arena);
   // Modo local: exige o UUID do aparelho já carregado (comportamento original).
   // Modo supabase: basta a inicialização concluída; a identidade é criada ao confirmar.
-  const podeContinuar = camposPreenchidos && prontoParaCadastro && !salvando;
+  const podeContinuar = camposPreenchidos && prontoParaCadastro && !salvando && !carregandoArena;
 
   function alterarCampo(setter: (valor: string) => void) {
     return (valor: string) => {
@@ -130,7 +150,9 @@ export default function CheckinScreen() {
         onBack={() => router.back()}
       />
       <Text style={styles.helperText}>
-        Voce esta entrando na {arena?.name}. Preencha seus dados para participar.
+        {carregandoArena
+          ? 'Carregando arena...'
+          : `Voce esta entrando na ${arena?.nome ?? 'arena'}. Preencha seus dados para participar.`}
       </Text>
 
       <Text style={styles.label}>Seu apelido</Text>
@@ -204,7 +226,7 @@ export default function CheckinScreen() {
           </View>
         ) : (
           <Text style={styles.primaryButtonText}>
-            {carregandoParticipante ? 'Preparando...' : 'Continuar'}
+            {carregandoArena || carregandoParticipante ? 'Preparando...' : 'Continuar'}
           </Text>
         )}
       </Pressable>

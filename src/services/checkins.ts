@@ -58,6 +58,7 @@ export {
   listarMeusCheckins,
   listarPendentesDeFeedback,
   obterCheckin,
+  obterPosicaoNaFila,
   registrarCheckin,
   totaisPorAtividade,
 } from './checkinsSupabase';
