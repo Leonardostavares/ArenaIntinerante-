@@ -136,15 +136,17 @@ export default function FilaScreen() {
         <Text style={styles.queueNumber}>{queueNumber}</Text>
         <Text style={styles.queueTitle}>{nickname}, voce entrou na fila!</Text>
         <Text style={styles.helperText}>{station}</Text>
-        <View style={styles.positionBox}>
-          <Text style={styles.positionLabel}>SUA POSICAO</Text>
-          {posicao === null ? (
-            <ActivityIndicator color={colors.text} style={styles.positionLoading} />
-          ) : (
-            <Text style={styles.positionValue}>{posicao}o</Text>
-          )}
-          <Text style={styles.positionHint}>Acompanhe o chamado no monitor da Arena.</Text>
-        </View>
+        {!concluida ? (
+          <View style={styles.positionBox}>
+            <Text style={styles.positionLabel}>SUA POSICAO</Text>
+            {posicao === null ? (
+              <ActivityIndicator color={colors.text} style={styles.positionLoading} />
+            ) : (
+              <Text style={styles.positionValue}>{posicao}o</Text>
+            )}
+            <Text style={styles.positionHint}>Acompanhe o chamado no monitor da Arena.</Text>
+          </View>
+        ) : null}
 
         {concluida ? (
           <>
