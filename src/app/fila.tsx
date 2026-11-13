@@ -21,6 +21,8 @@ export default function FilaScreen() {
   const [concluida, setConcluida] = useState(false);
   const [concluindo, setConcluindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // true enquanto a tela está sendo fechada por "Voltar ao início".
+  const [saindo, setSaindo] = useState(false);
   // Trava imediata contra toques repetidos.
   const concluindoRef = useRef(false);
   // A atividade já tem avaliação? (null enquanto não se sabe)
@@ -123,6 +125,9 @@ export default function FilaScreen() {
   }
 
   function voltarAoInicio() {
+    // Esconde o aviso "Check-in não encontrado" durante a troca de tela:
+    // resetParticipante() limpa o check-in um instante antes da navegação.
+    setSaindo(true);
     resetParticipante();
     router.replace('/');
   }
@@ -170,7 +175,7 @@ export default function FilaScreen() {
                 <Text style={styles.errorText}>{erro}</Text>
               </View>
             ) : null}
-            {!checkinAtualId ? (
+            {!checkinAtualId && !saindo ? (
               <View style={styles.errorBox} accessibilityRole="alert">
                 <Text style={styles.errorText}>
                   Check-in não encontrado. Volte e escolha a estação novamente.
