@@ -1,8 +1,53 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useParticipante } from '../contexts/ParticipanteContext';
+import { listarMeusCheckins } from '../services/checkins';
+import { obterMeuApelido } from '../services/identidadeSupabase';
 import { colors } from '../styles/colors';
 
+type FilaAtiva = { checkinId: string; arenaId: string; estacao: string };
+
 export default function PortalScreen() {
+  const { retomarFila, participanteId } = useParticipante();
+  const [filasAtivas, setFilasAtivas] = useState<FilaAtiva[]>([]);
+  const [apelido, setApelido] = useState('');
+
+  // Sempre que a tela inicial aparece, procura check-ins que continuam na
+  // fila no Supabase, para o participante poder voltar a ver a posição.
+  // Sem sessão, ou em caso de falha, simplesmente não mostra o atalho.
+  useFocusEffect(
+    useCallback(() => {
+      let ativo = true;
+      if (!participanteId) {
+        setFilasAtivas([]);
+        return;
+      }
+      Promise.all([listarMeusCheckins(), obterMeuApelido()])
+        .then(([checkins, nome]) => {
+          if (!ativo) return;
+          setApelido(nome ?? '');
+          setFilasAtivas(
+            checkins
+              .filter((c) => c.status === 'na_fila')
+              .map((c) => ({ checkinId: c.id, arenaId: c.arenaId, estacao: c.estacao }))
+          );
+        })
+        .catch((falha: unknown) => {
+          console.warn('[inicio] Não foi possível buscar suas filas ativas:', falha);
+          if (ativo) setFilasAtivas([]);
+        });
+      return () => {
+        ativo = false;
+      };
+    }, [participanteId])
+  );
+
+  function abrirFila(fila: FilaAtiva) {
+    retomarFila({ ...fila, apelido: apelido || 'Participante' });
+    router.push('/fila');
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -10,6 +55,17 @@ export default function PortalScreen() {
         <Text style={styles.title}>Bem-vindo!</Text>
         <Text style={styles.subtitle}>Quem esta acessando agora?</Text>
       </View>
+
+      {filasAtivas.map((fila) => (
+        <Pressable
+          key={fila.checkinId}
+          onPress={() => abrirFila(fila)}
+          style={({ pressed }) => [styles.filaAtivaButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.filaAtivaText}>⏳ Ver minha fila</Text>
+          <Text style={styles.filaAtivaHint}>{fila.estacao}</Text>
+        </Pressable>
+      ))}
 
       <Pressable
         onPress={() => router.push('/arenas')}
@@ -83,6 +139,25 @@ const styles = StyleSheet.create({
   },
   participanteHint: {
     color: colors.primaryText,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  filaAtivaButton: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: 16,
+    borderWidth: 2,
+    padding: 18,
+    marginBottom: 16,
+  },
+  filaAtivaText: {
+    color: colors.primary,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  filaAtivaHint: {
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
     marginTop: 4,

@@ -16,6 +16,23 @@ type CheckinData = {
   idade: string;
 };
 
+type RetomadaDeFila = {
+  checkinId: string;
+  arenaId: string;
+  estacao: string;
+  apelido: string;
+};
+
+/**
+ * Senha de exibição (A-20 a A-99) derivada do id do check-in: estável, então
+ * é a mesma ao retomar a fila. Não é a posição; a posição vem do servidor.
+ */
+function senhaDoCheckin(checkinId: string): string {
+  let soma = 0;
+  for (let i = 0; i < checkinId.length; i += 1) soma += checkinId.charCodeAt(i) * (i + 1);
+  return `A-${(soma % 80) + 20}`;
+}
+
 type ParticipanteContextValue = {
   // Identificação: ID do usuário anônimo do Supabase Auth (sessão salva no
   // aparelho), ou null enquanto o participante ainda não fez o cadastro.
@@ -41,6 +58,8 @@ type ParticipanteContextValue = {
   checkin: (arenaId: string, dados: CheckinData) => void;
   /** Registra o check-in no Supabase e, só depois, atualiza a fila. Rejeita se falhar. */
   joinQueue: (station: string) => Promise<void>;
+  /** Reabre a fila de um check-in ainda ativo (sem gravar nada). */
+  retomarFila: (dados: RetomadaDeFila) => void;
   resetParticipante: () => void;
 
   // Acesso da equipe ao painel. Fica SÓ em memória: some ao fechar o app.
@@ -133,10 +152,20 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       const { checkin: registro } = await registrarCheckin(arenaId, stationName);
       setCheckinAtualId(registro.id);
       setStation(stationName);
-      setQueueNumber(`A-${Math.floor(Math.random() * 80) + 20}`);
+      setQueueNumber(senhaDoCheckin(registro.id));
     },
     [arenaId]
   );
+
+  // Reabre a fila de um check-in que continua ativo no Supabase (ex.: o
+  // participante saiu da tela). Só preenche o estado da tela; não grava nada.
+  const retomarFila = useCallback((dados: RetomadaDeFila) => {
+    setNickname(dados.apelido);
+    setArenaId(dados.arenaId);
+    setStation(dados.estacao);
+    setCheckinAtualId(dados.checkinId);
+    setQueueNumber(senhaDoCheckin(dados.checkinId));
+  }, []);
 
   // Limpa só os dados da tela. O participanteId e a sessão NÃO são apagados:
   // identificam o participante e precisam continuar os mesmos.
@@ -175,6 +204,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       checkinAtualId,
       checkin,
       joinQueue,
+      retomarFila,
       resetParticipante,
       acessoEquipe,
       liberarAcessoEquipe,
@@ -195,6 +225,7 @@ export function ParticipanteProvider({ children }: { children: ReactNode }) {
       checkinAtualId,
       checkin,
       joinQueue,
+      retomarFila,
       resetParticipante,
       acessoEquipe,
       liberarAcessoEquipe,

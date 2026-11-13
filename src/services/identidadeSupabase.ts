@@ -141,6 +141,19 @@ export function garantirSessaoAnonima(): Promise<string> {
   return sessaoEmAndamento;
 }
 
+/** Apelido do participante da sessão atual (null se não houver sessão ou cadastro). */
+export async function obterMeuApelido(): Promise<string | null> {
+  const id = await obterIdDaSessaoAtual();
+  if (!id) return null;
+  const { data, error } = await obterSupabase()
+    .from('participantes')
+    .select('apelido')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw converterErroBanco(error);
+  return data ? (data as { apelido: string }).apelido : null;
+}
+
 async function atualizarCadastro(id: string, dados: CadastroParticipante): Promise<void> {
   const { data, error } = await obterSupabase()
     .from('participantes')
