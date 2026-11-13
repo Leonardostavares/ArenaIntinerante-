@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../components/Card';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Arena, listarArenas } from '../services/arenasSupabase';
@@ -73,12 +74,23 @@ export default function MonitorScreen() {
     return () => clearInterval(intervalo);
   }, [arenaSelecionada, estacaoSelecionada]);
 
+  // Volta ao passo anterior do monitor (fila -> estação -> arena -> início).
+  function voltarDaEstacao() {
+    setEstacaoSelecionada(null);
+    setFila([]);
+    setErroFila(null);
+    primeiraCargaRef.current = true;
+  }
+
   if (erroSessao) {
     return (
       <View style={styles.container}>
         <View style={styles.errorBox} accessibilityRole="alert">
           <Text style={styles.errorText}>{erroSessao}</Text>
         </View>
+        <Pressable onPress={() => router.back()} style={styles.backLink}>
+          <Text style={styles.backLinkText}>Voltar</Text>
+        </Pressable>
       </View>
     );
   }
@@ -95,7 +107,7 @@ export default function MonitorScreen() {
   if (!arenaSelecionada) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
-        <ScreenHeader eyebrow="MONITOR" title="Escolha a arena" />
+        <ScreenHeader eyebrow="MONITOR" title="Escolha a arena" onBack={() => router.back()} />
         {arenas.map((arena) => (
           <Card key={arena.id} title={arena.nome} subtitle={arena.local ?? undefined} onPress={() => setArenaSelecionada(arena)} />
         ))}
@@ -107,7 +119,11 @@ export default function MonitorScreen() {
   if (!estacaoSelecionada) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
-        <ScreenHeader eyebrow="MONITOR" title={arenaSelecionada.nome} />
+        <ScreenHeader
+          eyebrow="MONITOR"
+          title={arenaSelecionada.nome}
+          onBack={() => setArenaSelecionada(null)}
+        />
         {arenaSelecionada.estacoes.map((estacao) => (
           <Card key={estacao} title={estacao} onPress={() => setEstacaoSelecionada(estacao)} />
         ))}
@@ -120,6 +136,9 @@ export default function MonitorScreen() {
 
   return (
     <View style={styles.kioskContainer}>
+      <Pressable onPress={voltarDaEstacao} style={styles.kioskBack} hitSlop={12}>
+        <Text style={styles.backLinkText}>Voltar</Text>
+      </Pressable>
       <Text style={styles.kioskEyebrow}>{arenaSelecionada.nome.toUpperCase()}</Text>
       <Text style={styles.kioskTitle}>{estacaoSelecionada}</Text>
 
@@ -170,6 +189,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  backLink: {
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  backLinkText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  kioskBack: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
   },
   kioskContainer: {
     flex: 1,
